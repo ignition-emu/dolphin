@@ -1,0 +1,48 @@
+name: Ignition core release (macOS arm64)
+
+# Builds the dylib Ignition ships on macOS and publishes it on ignition-v* tags.
+# Kept separate from upstream's build-macOS-libretro.yml so rebases never touch it.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["ignition-v*"]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        # RelWithDebInfo so a crash names its line. HAVE_PIPE2=0 keeps bundled
+        # curl off pipe2, which newer macOS SDKs expose only above Dolphin's
+        # 11.0 deployment target and -Werror turns into a build failure.
+        run: |
+          cmake -B build \
+            -DLIBRETRO=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DHAVE_PIPE2=0
+
+      - name: Build
+        run: cmake --build build --target dolphin_libretro -j "$(sysctl -n hw.ncpu)"
+
+      - name: Package (buildbot layout)
+        run: |
+          cd build
+          zip -j dolphin_libretro.dylib.zip dolphin_libretro.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dolphin_libretro-macos-arm64
+          path: build/dolphin_libretro.dylib.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/ignition-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/dolphin_libretro.dylib.zip
