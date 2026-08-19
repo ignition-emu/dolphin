@@ -115,10 +115,8 @@ static const struct retro_subsystem_info subsystems[] = {
 cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, (void*)subsystems);
 }
 
-#ifdef __APPLE__
 // Cleared in retro_deinit, alongside g_emuthread_launched.
 static bool s_video_start_failed = false;
-#endif
 
 void retro_init(void)
 {
@@ -129,9 +127,7 @@ void retro_init(void)
 void retro_deinit(void)
 {
   Libretro::g_emuthread_launched = false;
-#ifdef __APPLE__
   s_video_start_failed = false;
-#endif
 #ifdef PERF_TEST
   perf_cb.perf_log();
 #endif
@@ -249,18 +245,18 @@ void retro_run(void)
       !Libretro::g_emuthread_launched)
   {
     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-#ifdef __APPLE__
     // Boot dereferences the video backend, so it must exist before EmuThread.
     // Nothing to fall back to either: the hardware renderers need a context the
     // frontend only hands out before the content is loaded.
-    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Metal" && !s_video_start_failed &&
+    if (Libretro::Video::UsesNoContextBackend() && !s_video_start_failed &&
         !Libretro::Video::InitializeNoContextBackend())
     {
-      static const char failed[] =
-          "Dolphin: the Metal renderer failed to start. Set the Renderer option "
-          "to Hardware and restart the core.";
+      static const std::string failed = fmt::format(
+          "Dolphin: the {} renderer failed to start. Set the Renderer option to "
+          "Hardware and restart the core.",
+          Libretro::Options::gfx_settings::NO_CONTEXT_RENDERER);
       ERROR_LOG_FMT(VIDEO, "{}", failed);
-      retro_message message = {failed, 600};
+      retro_message message = {failed.c_str(), 600};
       Libretro::environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &message);
       Libretro::environ_cb(RETRO_ENVIRONMENT_SHUTDOWN, nullptr);
       // Latched, or the failing init retries every frame. g_emuthread_launched
@@ -269,7 +265,6 @@ void retro_run(void)
     }
     if (s_video_start_failed)
       return;
-#endif
     if (system.IsDualCoreMode())
     {
       Core::s_emu_thread = std::thread(Core::EmuThread,

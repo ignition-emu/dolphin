@@ -43,6 +43,8 @@ bool HandOffFrame(const AbstractTexture* texture);
 // Frees the handoff's staging texture. Must run before the backend that
 // created it shuts down.
 void ReleaseHandOffResources();
+// True when the configured backend is the no-context one.
+bool UsesNoContextBackend();
 // Initializes a backend that takes no libretro context (Metal). The HW paths
 // get this from ContextReset; nothing else calls it for these, and EmuThread's
 // own init is compiled out under __LIBRETRO__. False when it did not come up,

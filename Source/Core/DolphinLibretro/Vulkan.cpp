@@ -436,9 +436,11 @@ bool HandOffXFB(const AbstractTexture* texture)
   vk_texture->TransitionToLayout(Vulkan::g_command_buffer_mgr->GetCurrentCommandBuffer(),
                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-  // Waited on rather than handed off asynchronously: the frontend reads the
-  // image as soon as video_cb returns, and it is the emulated frame's own
-  // work being waited for, which has already happened by this point.
+  // Waited on rather than handed off asynchronously: what is waited for is the
+  // emulated frame's own work, already submitted. The image is the live XFB,
+  // which the next frame draws over -- safe only because the frontend reads it
+  // after retro_run returns and before the core steps again. A later read, or a
+  // core stepped from another thread, would need this rotated per sync index.
   Vulkan::g_command_buffer_mgr->SubmitCommandBuffer(false, true, true);
   Vulkan::StateTracker::GetInstance()->InvalidateCachedState();
 

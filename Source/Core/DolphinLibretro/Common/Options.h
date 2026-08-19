@@ -221,6 +221,15 @@ namespace gfx_hardware {
 // ======================================================
 namespace gfx_settings {
   constexpr const char RENDERER[] = "dolphin_renderer";
+  // The RENDERER value that takes no libretro context. Doubles as the Dolphin
+  // backend name, so it also matches MAIN_GFX_BACKEND and GetConfigName. Empty
+  // where there is none, so nothing matches it.
+  constexpr const char NO_CONTEXT_RENDERER[] =
+#ifdef __APPLE__
+      "Metal";
+#else
+      "";
+#endif
   constexpr const char WIDESCREEN_HACK[] = "dolphin_widescreen_hack";
   constexpr const char ASPECT_RATIO[] = "dolphin_aspect_ratio";
   constexpr const char CROP_OVERSCAN[] = "dolphin_crop_overscan";

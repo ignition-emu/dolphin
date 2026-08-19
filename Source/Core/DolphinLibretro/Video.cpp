@@ -96,6 +96,17 @@ int GetAdjustedBaseHeight()
   return EFB_HEIGHT;
 }
 
+static bool IsNoContextBackend(const std::string& name)
+{
+  return Options::gfx_settings::NO_CONTEXT_RENDERER[0] != '\0' &&
+         name == Options::gfx_settings::NO_CONTEXT_RENDERER;
+}
+
+bool UsesNoContextBackend()
+{
+  return IsNoContextBackend(Config::Get(Config::MAIN_GFX_BACKEND));
+}
+
 void Init()
 {
   DEBUG_LOG_FMT(VIDEO, "Video - Init");
@@ -149,15 +160,13 @@ void Init()
 #endif
   }
   hw_render.context_type = RETRO_HW_CONTEXT_NONE;
-#ifdef __APPLE__
-  if (renderer == "Metal")
+  if (IsNoContextBackend(renderer))
   {
     // No libretro context: the backend renders offscreen and finished frames
     // come back through HandOffFrame's readback as software frames.
-    Config::SetBase(Config::MAIN_GFX_BACKEND, "Metal");
+    Config::SetBase(Config::MAIN_GFX_BACKEND, renderer);
     return;
   }
-#endif
   if (renderer == "Software")
     Config::SetBase(Config::MAIN_GFX_BACKEND, "Software Renderer");
   else
@@ -564,13 +573,11 @@ bool Video_InitializeBackend()
   WindowSystemInfo wsi = {};
   wsi.type = WindowSystemType::Libretro;
   wsi.render_surface_scale = 1.0f;
-#ifdef __APPLE__
   // Upstream's Metal backend accepts exactly two window types, and offscreen
   // is its Headless: no layer, no present, and IsHeadless() true, which is
   // what routes finished frames through HandOffFrame.
-  if (g_video_backend && g_video_backend->GetConfigName() == "Metal")
+  if (g_video_backend && IsNoContextBackend(g_video_backend->GetConfigName()))
     wsi.type = WindowSystemType::Headless;
-#endif
 
   g_video_backend->PrepareWindow(wsi);
 
