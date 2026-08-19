@@ -479,14 +479,19 @@ void ContextReset(void)
     g_context_status.MarkInitialized();
 }
 
-void InitializeNoContextBackend()
+bool InitializeNoContextBackend()
 {
-  const bool ok = Video_InitializeBackend();
-  NOTICE_LOG_FMT(VIDEO, "No-context backend init: {} -> {}, gfx={} vertex_manager={}",
-                 Config::Get(Config::MAIN_GFX_BACKEND), ok, g_gfx != nullptr,
-                 g_vertex_manager != nullptr);
-  if (ok)
-    g_context_status.MarkInitialized();
+  if (!Video_InitializeBackend())
+  {
+    ERROR_LOG_FMT(VIDEO, "No-context backend {} failed to initialize (gfx={})",
+                  Config::Get(Config::MAIN_GFX_BACKEND), g_gfx != nullptr);
+    return false;
+  }
+
+  INFO_LOG_FMT(VIDEO, "No-context backend {} initialized",
+               Config::Get(Config::MAIN_GFX_BACKEND));
+  g_context_status.MarkInitialized();
+  return true;
 }
 
 // Owned here rather than as function statics so ReleaseHandOffResources can
