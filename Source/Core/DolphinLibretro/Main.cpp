@@ -241,6 +241,11 @@ void retro_run(void)
       !Libretro::g_emuthread_launched)
   {
     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+#ifdef __APPLE__
+    // Boot dereferences the video backend, so it must exist before EmuThread.
+    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Metal")
+      Libretro::Video::InitializeNoContextBackend();
+#endif
     if (system.IsDualCoreMode())
     {
       Core::s_emu_thread = std::thread(Core::EmuThread,

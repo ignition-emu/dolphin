@@ -42,8 +42,12 @@
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 
+#include "VideoCommon/AbstractGfx.h"
+#include "VideoCommon/AbstractStagingTexture.h"
+#include "VideoCommon/AbstractTexture.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VertexLoaderManager.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoCommon.h"
@@ -145,6 +149,15 @@ void Init()
 #endif
   }
   hw_render.context_type = RETRO_HW_CONTEXT_NONE;
+#ifdef __APPLE__
+  if (renderer == "Metal")
+  {
+    // No libretro context: the backend renders offscreen and finished frames
+    // come back through HandOffFrame's readback as software frames.
+    Config::SetBase(Config::MAIN_GFX_BACKEND, "Metal");
+    return;
+  }
+#endif
   if (renderer == "Software")
     Config::SetBase(Config::MAIN_GFX_BACKEND, "Software Renderer");
   else
@@ -466,13 +479,79 @@ void ContextReset(void)
     g_context_status.MarkInitialized();
 }
 
+void InitializeNoContextBackend()
+{
+  const bool ok = Video_InitializeBackend();
+  NOTICE_LOG_FMT(VIDEO, "No-context backend init: {} -> {}, gfx={} vertex_manager={}",
+                 Config::Get(Config::MAIN_GFX_BACKEND), ok, g_gfx != nullptr,
+                 g_vertex_manager != nullptr);
+  if (ok)
+    g_context_status.MarkInitialized();
+}
+
+// Owned here rather than as function statics so ReleaseHandOffResources can
+// destroy them while the backend that created them is still alive.
+static std::unique_ptr<AbstractStagingTexture> s_handoff_staging;
+static std::vector<u32> s_handoff_pixels;
+
+void ReleaseHandOffResources()
+{
+  s_handoff_staging.reset();
+  s_handoff_pixels = {};
+}
+
+// Reads the finished XFB back through the backend's own staging path and hands
+// it to the frontend as an XRGB8888 software frame. Backend-agnostic: the path
+// for backends with no hardware handoff (Metal).
+static bool HandOffFrameByReadback(const AbstractTexture* texture)
+{
+  if (!g_gfx || !video_cb)
+    return false;
+
+  const AbstractTextureFormat format = texture->GetFormat();
+  if (format != AbstractTextureFormat::RGBA8 && format != AbstractTextureFormat::BGRA8)
+    return false;
+
+  const u32 width = texture->GetWidth();
+  const u32 height = texture->GetHeight();
+  if (!s_handoff_staging || s_handoff_staging->GetConfig().width != width ||
+      s_handoff_staging->GetConfig().height != height ||
+      s_handoff_staging->GetConfig().format != format)
+  {
+    const TextureConfig config(width, height, 1, 1, 1, format, 0, AbstractTextureType::Texture_2D);
+    s_handoff_staging = g_gfx->CreateStagingTexture(StagingTextureType::Readback, config);
+    if (!s_handoff_staging)
+      return false;
+  }
+
+  const MathUtil::Rectangle<int> rect(0, 0, width, height);
+  s_handoff_staging->CopyFromTexture(texture, rect, 0, 0, rect);
+  s_handoff_staging->Flush();
+
+  s_handoff_pixels.resize(size_t(width) * height);
+  s_handoff_staging->ReadTexels(rect, s_handoff_pixels.data(), width * sizeof(u32));
+
+  // The frontend was told XRGB8888, whose bytes are B,G,R,X; RGBA8's are
+  // R,G,B,A, so red and blue trade places. BGRA8 already matches.
+  if (format == AbstractTextureFormat::RGBA8)
+  {
+    for (u32& p : s_handoff_pixels)
+      p = (p & 0x0000FF00) | ((p & 0x000000FF) << 16) | ((p >> 16) & 0x000000FF);
+  }
+
+  video_cb(s_handoff_pixels.data(), width, height, width * sizeof(u32));
+  return true;
+}
+
 bool HandOffFrame(const AbstractTexture* texture)
 {
+  if (!texture)
+    return false;
 #ifdef HAS_VULKAN
   if (hw_render.context_type == RETRO_HW_CONTEXT_VULKAN)
     return Vk::HandOffXFB(texture);
 #endif
-  return false;
+  return HandOffFrameByReadback(texture);
 }
 
 bool Video_InitializeBackend()
@@ -480,6 +559,13 @@ bool Video_InitializeBackend()
   WindowSystemInfo wsi = {};
   wsi.type = WindowSystemType::Libretro;
   wsi.render_surface_scale = 1.0f;
+#ifdef __APPLE__
+  // Upstream's Metal backend accepts exactly two window types, and offscreen
+  // is its Headless: no layer, no present, and IsHeadless() true, which is
+  // what routes finished frames through HandOffFrame.
+  if (g_video_backend && g_video_backend->GetConfigName() == "Metal")
+    wsi.type = WindowSystemType::Headless;
+#endif
 
   g_video_backend->PrepareWindow(wsi);
 
@@ -569,6 +655,7 @@ void ContextDestroy(void)
   }
 #endif
 
+  ReleaseHandOffResources();
   if (g_video_backend)
   {
     g_video_backend->Shutdown();

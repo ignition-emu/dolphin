@@ -837,6 +837,9 @@ static struct retro_core_option_v2_definition option_defs[] = {
     CATEGORY_GFX_SETTINGS,
     {
       { "Hardware", "Hardware" },
+  #ifdef __APPLE__
+      { "Metal",    "Metal" },
+  #endif
   #if defined(_DEBUG) || defined(DEBUGFAST)
       { "Software", "Software Renderer" },
       { "Null",     "Null Renderer" },

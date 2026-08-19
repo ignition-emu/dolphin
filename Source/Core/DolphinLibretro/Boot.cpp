@@ -771,6 +771,7 @@ void retro_unload_game(void)
     Core::Shutdown(system);
   }
 
+  Libretro::Video::ReleaseHandOffResources();
   if (!g_context_status.IsDestroyed() && g_video_backend)
     g_video_backend->Shutdown();
 
