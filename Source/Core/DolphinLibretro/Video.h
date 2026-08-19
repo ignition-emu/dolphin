@@ -37,6 +37,9 @@ namespace Libretro
 namespace Video
 {
 int GetAdjustedBaseHeight();
+// Hands a finished frame to the frontend when there is no swap chain to
+// present through. False when this backend has no such path.
+bool HandOffFrame(const AbstractTexture* texture);
 void Init(void);
 bool Video_InitializeBackend();
 bool SetHWRender(retro_hw_context_type type, const int version_major = -1, const int version_minor = -1);

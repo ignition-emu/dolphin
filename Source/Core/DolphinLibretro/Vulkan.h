@@ -1,5 +1,7 @@
 #pragma once
 
+class AbstractTexture;
+
 namespace Libretro
 {
 namespace Video
@@ -15,6 +17,9 @@ void SetHWRenderInterface(retro_hw_render_interface* hw_render_interface);
 void Shutdown();
 void WaitForPresentation();
 VkSurfaceKHR GetSurface();
+// Hands a finished XFB straight to the frontend. Used when there is no swap
+// chain to present through -- see HandOffFrame in Video.cpp.
+bool HandOffXFB(const AbstractTexture* texture);
 }  // namespace Vk
 }  // namespace Video
 }  // namespace Libretro

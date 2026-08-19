@@ -12,7 +12,11 @@
 #include "Core/Config/MainSettings.h"
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/Vulkan.h"
+#include "VideoBackends/Vulkan/CommandBufferManager.h"
+#include "VideoBackends/Vulkan/StateTracker.h"
+#include "VideoBackends/Vulkan/VKTexture.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
+#include "VideoCommon/AbstractTexture.h"
 #include "VideoCommon/FramebufferManager.h"
 
 #include <unordered_set>
@@ -410,6 +414,54 @@ static VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue,
 
   video_cb(RETRO_HW_FRAME_BUFFER_VALID, out_w, out_h, 0);
   return VK_SUCCESS;
+}
+
+// Hands the finished XFB to the frontend without presenting it.
+//
+// The swap chain path below reaches the frontend through vkQueuePresentKHR,
+// which needs a VkSurfaceKHR the frontend does not have when it renders
+// offscreen. Nothing about the frame requires one: it is already a finished
+// image on the same device, and set_image is how the frontend takes it.
+//
+// The submit mirrors VKGfx::PresentBackbuffer, with the frontend's read
+// standing in for the present.
+bool HandOffXFB(const AbstractTexture* texture)
+{
+  if (!vulkan || !texture)
+    return false;
+
+  const Vulkan::VKTexture* vk_texture = static_cast<const Vulkan::VKTexture*>(texture);
+
+  Vulkan::StateTracker::GetInstance()->EndRenderPass();
+  vk_texture->TransitionToLayout(Vulkan::g_command_buffer_mgr->GetCurrentCommandBuffer(),
+                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  // Waited on rather than handed off asynchronously: the frontend reads the
+  // image as soon as video_cb returns, and it is the emulated frame's own
+  // work being waited for, which has already happened by this point.
+  Vulkan::g_command_buffer_mgr->SubmitCommandBuffer(false, true, true);
+  Vulkan::StateTracker::GetInstance()->InvalidateCachedState();
+
+  vulkan->wait_sync_index(vulkan->handle);
+
+  // Static: the frontend keeps the pointer until it has copied the image.
+  static retro_vulkan_image image;
+  image.create_info = {};
+  image.create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  image.create_info.image = vk_texture->GetImage();
+  image.create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+  image.create_info.format = vk_texture->GetVkFormat();
+  image.create_info.components = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
+                                  VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A};
+  image.create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  image.create_info.subresourceRange.layerCount = 1;
+  image.create_info.subresourceRange.levelCount = 1;
+  image.image_view = vk_texture->GetView();
+  image.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  vulkan->set_image(vulkan->handle, &image, 0, nullptr, vulkan->queue_index);
+  video_cb(RETRO_HW_FRAME_BUFFER_VALID, texture->GetWidth(), texture->GetHeight(), 0);
+  return true;
 }
 
 void WaitForPresentation()

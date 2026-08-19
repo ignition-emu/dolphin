@@ -466,6 +466,15 @@ void ContextReset(void)
     g_context_status.MarkInitialized();
 }
 
+bool HandOffFrame(const AbstractTexture* texture)
+{
+#ifdef HAS_VULKAN
+  if (hw_render.context_type == RETRO_HW_CONTEXT_VULKAN)
+    return Vk::HandOffXFB(texture);
+#endif
+  return false;
+}
+
 bool Video_InitializeBackend()
 {
   WindowSystemInfo wsi = {};

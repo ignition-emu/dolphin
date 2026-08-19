@@ -26,6 +26,11 @@
 #ifdef __LIBRETRO__
 #include "Core/Config/MainSettings.h"
 #include "VideoCommon/VideoBackendBase.h"
+
+namespace Libretro::Video
+{
+bool HandOffFrame(const AbstractTexture* texture);
+}
 #endif
 
 std::unique_ptr<VideoCommon::Presenter> g_presenter;
@@ -933,7 +938,17 @@ void Presenter::Present(PresentInfo* present_info)
   m_present_count++;
 
   if (g_gfx->IsHeadless() || (!m_onscreen_ui && !m_xfb_entry))
+  {
+#ifdef __LIBRETRO__
+    // A frontend that renders offscreen is headless by the definition below --
+    // no swap chain -- but it still wants the picture. Everything past this
+    // point composites into a backbuffer that does not exist in that case, so
+    // the finished XFB goes straight across instead.
+    if (m_xfb_entry)
+      Libretro::Video::HandOffFrame(m_xfb_entry->texture.get());
+#endif
     return;
+  }
 
   if (!g_gfx->SupportsUtilityDrawing())
   {
