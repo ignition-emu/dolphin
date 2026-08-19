@@ -91,6 +91,11 @@ private:
 
   Common::BlockingLoop m_gpu_mainloop;
 
+#ifdef __LIBRETRO__
+  // A stop that arrived while the loop was not running. See StopGpuLoop.
+  Common::Flag m_gpu_loop_stop_pending;
+#endif
+
   Common::Flag m_emu_running_state;
 
   // Most of this array is unlikely to be faulted in...

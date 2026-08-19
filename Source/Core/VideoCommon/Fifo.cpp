@@ -138,6 +138,13 @@ void FifoManager::ExitGpuLoop()
 #ifdef __LIBRETRO__
 void FifoManager::StopGpuLoop()
 {
+  // retro_run drives one frame per call, and RunGpuLoop blocks until a field
+  // lands here. Stop() drops a request made while the loop is not running, and
+  // Callback_NewField has paused the CPU by now, so no later field reissues it:
+  // the next RunGpuLoop would wait forever. Hand it to that run instead.
+  if (m_gpu_mainloop.IsStopped())
+    m_gpu_loop_stop_pending.Set();
+
   m_gpu_mainloop.Stop(Common::BlockingLoop::StopMode::NonBlock);
 }
 #endif
@@ -292,6 +299,12 @@ void FifoManager::ResetVideoBuffer()
 // Purpose: Keep the Core HW updated about the CPU-GPU distance
 void FifoManager::RunGpuLoop()
 {
+#ifdef __LIBRETRO__
+  // This frame's field already arrived, between the last run and this one.
+  if (m_gpu_loop_stop_pending.TestAndClear())
+    return;
+#endif
+
   m_gpu_mainloop.Run(
       [this] {
         // Run events from the CPU thread.

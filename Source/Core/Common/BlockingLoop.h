@@ -227,6 +227,8 @@ public:
   }
 
   bool IsRunning() const { return !m_stopped.IsSet() && !m_shutdown.IsSet(); }
+  // True while no thread is inside Run(), where Stop() is a no-op.
+  bool IsStopped() const { return m_stopped.IsSet(); }
   bool IsDone() const { return m_stopped.IsSet() || m_running_state.load() <= STATE_DONE; }
   // This function should be triggered regularly over time so
   // that we will fall back from the busy loop to sleeping.
