@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-26
     # action-gh-release writes; the workflow token defaults to read-only.
     permissions:
       contents: write
