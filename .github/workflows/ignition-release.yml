@@ -67,18 +67,20 @@ jobs:
       CXX: g++-12
     steps:
       - name: Install toolchain and dependencies
-        # Ubuntu 22.04 is here for its glibc and ships neither a new enough
-        # cmake nor a new enough gcc, so both come from third parties. That is
-        # two network dependencies this build cannot do without, and they fail
-        # from time to time -- so they fail loudly here rather than four steps
-        # later. A transient fetch once produced an empty key and the only
-        # symptom was "gpg: no valid OpenPGP data found".
+        # Ubuntu 22.04 is here for its glibc (2.35). It ships gcc-12 in
+        # jammy-updates/main -- 12.3.0, which is what this used to install from
+        # the ubuntu-toolchain-r PPA without needing to. The PPA is gone from
+        # here: it was a second key fetch that could fail, and it did, with
+        # `add-apt-repository` reporting only "gpg: no valid OpenPGP data
+        # found" from inside itself and taking the build down before checkout.
+        #
+        # Kitware stays, because jammy's cmake is 3.22 and Dolphin wants 3.25.
+        # That fetch is the one remaining third party, so it retries and is
+        # checked rather than piped straight into gpg.
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends \
-            software-properties-common gpg gpg-agent curl ca-certificates
-          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          apt-get install -y --no-install-recommends gpg curl ca-certificates
           curl -fsSL --retry 5 --retry-connrefused --retry-delay 3 \
             https://apt.kitware.com/keys/kitware-archive-latest.asc \
             -o /tmp/kitware.asc
