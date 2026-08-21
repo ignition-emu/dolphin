@@ -67,13 +67,25 @@ jobs:
       CXX: g++-12
     steps:
       - name: Install toolchain and dependencies
+        # Ubuntu 22.04 is here for its glibc and ships neither a new enough
+        # cmake nor a new enough gcc, so both come from third parties. That is
+        # two network dependencies this build cannot do without, and they fail
+        # from time to time -- so they fail loudly here rather than four steps
+        # later. A transient fetch once produced an empty key and the only
+        # symptom was "gpg: no valid OpenPGP data found".
         run: |
+          set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends \
-            software-properties-common gpg gpg-agent wget ca-certificates
+            software-properties-common gpg gpg-agent curl ca-certificates
           add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
-            | gpg --dearmor - > /usr/share/keyrings/kitware-archive-keyring.gpg
+          curl -fsSL --retry 5 --retry-connrefused --retry-delay 3 \
+            https://apt.kitware.com/keys/kitware-archive-latest.asc \
+            -o /tmp/kitware.asc
+          [ -s /tmp/kitware.asc ] || { echo "Kitware key came back empty" >&2; exit 1; }
+          gpg --dearmor < /tmp/kitware.asc > /usr/share/keyrings/kitware-archive-keyring.gpg
+          [ -s /usr/share/keyrings/kitware-archive-keyring.gpg ] \
+            || { echo "Kitware key did not dearmor" >&2; exit 1; }
           echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' \
             > /etc/apt/sources.list.d/kitware.list
           apt-get update
@@ -89,6 +101,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Check the toolchain is what the build needs
+        # Cheaper to find out here than at minute nineteen of a compile.
+        run: |
+          set -euo pipefail
+          cmake --version | head -1
+          gcc-12 --version | head -1
+          ldd --version | head -1
 
       - name: Trust the checkout
         # The container runs as a different user than the checkout is owned by,
