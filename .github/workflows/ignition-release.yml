@@ -102,12 +102,20 @@ jobs:
         # image's own curl, mbedtls and krb5 by SONAME -- names that differ on
         # Fedora and Arch -- and GCC 12's libstdc++, which Ubuntu 22.04 does
         # not itself ship. Both turn "built against an old glibc" into a lie.
+        #
+        # --exclude-libs,ALL is the other half, and without it the first half
+        # is a trap. A static libstdc++ whose symbols stay global collides with
+        # a host that has its own: Godot's Linux binary links libstdc++
+        # statically and is linked -rdynamic, so its C++ runtime sits in the
+        # process's global scope, and dlopening this core then crashes in
+        # __cxxabiv1 RTTI the moment the host has a rendering device. Headless
+        # hosts survive it, which is why it took a windowed run to find.
         run: |
           cmake -B build -G Ninja \
             -DLIBRETRO=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DUSE_SYSTEM_LIBS=OFF \
-            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL"
 
       - name: Build
         run: cmake --build build --target dolphin_libretro -j "$(nproc)"
