@@ -61,6 +61,12 @@ jobs:
     # is old enough that its cmake (3.22) and gcc (11) are both below what
     # Dolphin needs, so the two come from elsewhere.
     container: ubuntu:22.04
+    # A container job defaults to `sh`, not bash, and dash has no `pipefail`.
+    # Naming the shell is cheaper than keeping every step POSIX by hand and
+    # finding out which one was not, one CI run at a time.
+    defaults:
+      run:
+        shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
       CC: gcc-12
