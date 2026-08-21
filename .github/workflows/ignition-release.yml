@@ -84,7 +84,7 @@ jobs:
         # That fetch is the one remaining third party, so it retries and is
         # checked rather than piped straight into gpg.
         run: |
-          set -euo pipefail
+          set -eu
           apt-get update
           apt-get install -y --no-install-recommends gpg curl ca-certificates
           curl -fsSL --retry 5 --retry-connrefused --retry-delay 3 \
@@ -112,11 +112,16 @@ jobs:
 
       - name: Check the toolchain is what the build needs
         # Cheaper to find out here than at minute nineteen of a compile.
+        #
+        # No pipes. `foo --version | head -1` under `set -o pipefail` fails the
+        # step with 141 the moment head closes the pipe before the writer has
+        # finished -- which is what a multi-line --version does, and what this
+        # step did on its first outing.
         run: |
-          set -euo pipefail
-          cmake --version | head -1
-          gcc-12 --version | head -1
-          ldd --version | head -1
+          set -eu
+          cmake --version
+          gcc-12 --version
+          ldd --version
 
       - name: Trust the checkout
         # The container runs as a different user than the checkout is owned by,
