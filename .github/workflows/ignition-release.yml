@@ -214,6 +214,25 @@ jobs:
       - name: Build
         run: cmake --build build --target dolphin_libretro -j "$(nproc)"
 
+      - name: Strip
+        # The NDK toolchain keeps debug info in Release, so the linked core is
+        # 219 MB with .debug_info intact. The buildbot's own arm64 core is
+        # 15 MB, stripped, and this one is downloaded onto a handheld -- so it
+        # is stripped here rather than shipped as it links. Neither desktop job
+        # needs this: macOS is RelWithDebInfo on purpose and Linux's Release
+        # carries no debug_info to begin with.
+        run: |
+          set -eu
+          STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          [ -x "$STRIP" ] || { echo "no llvm-strip at $STRIP" >&2; exit 1; }
+          "$STRIP" --strip-unneeded build/dolphin_libretro_android.so
+          size=$(stat -c %s build/dolphin_libretro_android.so)
+          echo "stripped to $size bytes"
+          # Generous against the buildbot's 15 MB: this is here to catch a
+          # strip that silently did nothing, not to police a few megabytes.
+          [ "$size" -lt 41943040 ] \
+            || { echo "still $size bytes after stripping" >&2; exit 1; }
+
       - name: Package (buildbot layout)
         # CMake already gives the Android target the _android.so suffix
         # (Source/Core/DolphinLibretro/CMakeLists.txt), which is the name the
